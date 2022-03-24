@@ -3,3 +3,5 @@ cello.db
 .gpg/
 Diagram1.dia
 Diagram1.dia.autosave
+private_key.pem
+public_key.pem
