@@ -4,7 +4,7 @@
 Infrastructure for encrypted asymmetric key sharing has been added to the model.
 
 The cryptography modules are almost finished being tested. They will entirely replace the database for storing 
-membership data for contracts.
+membership data for contracts. The database will still be used to store user and contract information.
 
 ## Smart contract
 #### cello_mvc/Contact.sol: 
@@ -26,7 +26,6 @@ contract module implementation for the model.
 ### Almost complete and mostly tested
 #### cello_mvc.CelloCryptog.ContractKeyring: 
 stores encrypted and unencrypted contract keys and member public keys, along with functions for encrypting and decrypting contract messages, encrypting asymmetric contract keys, and enumerating contract membership.
-*At the moment, we are transitioning to using the ContractKeyring to store most of the contract membership data instead of the database.
 *KEY BASE SHOULD BE ENCRYPTED FOR THE FINAL PROTOTYPE.
 
 #### cello_mvc.CelloCryptog.CelloKeyring: 
