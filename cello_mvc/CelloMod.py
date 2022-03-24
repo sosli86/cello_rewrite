@@ -1,8 +1,10 @@
 from cello_mvc.CelloDB import CelloDB
 from cello_mvc.Contract import Contract
-from cello_mvc.CelloCryptog import CelloKeyring, contract_key_gen, decrypt_message, encrypt_message
+from cello_mvc.CelloCryptog import CelloKeyring, ContractKeyring
+from web3 import *
 from threading import *
 import time
+import os
 
 class ActiveContract:
     def __init__(self, web3, contract_name, contract_address=""):
@@ -45,56 +47,30 @@ class ActiveContract:
         return self.contract.add_key_cipher(keycipher)
 
 class UserMod:
-    def __init__(self):
-        
-        # Initialize contract dictionaries
-        self.contracts = {}
-        self.contract_keys = {}
-        self.contract_message_logs = {}
-        self.contract_pub_key_logs = {}
-        self.contract_key_cipher_logs = {}
-        self.contract_message_archives = {}
-        self.contract_membership_archives = {}
-
-        self.contract_membership_authenticated = []
-        self.contract_membership_unauthenticated = []
-    
-    def set_web3(self, web3):
+    def set_web3(self, web3: Web3):
         self.web3 = web3
-    
-    def set_contract_key(self, contract_name, contract_key):
-        self.contract_keys[contract_name] = contract_key
     
     def set_db(self, db: CelloDB):
         self.db = db
     
-    def set_keyring(self, keyring: CelloKeyring):
+    def set_user_keyring(self, keyring: CelloKeyring):
         self.keyring = keyring
+    
+    def set_contract_keyring(self, contract_keyring: ContractKeyring):
+        self.contract_keyring = contract_keyring
     
     def new_user(self, user_name, user_address):
         self.user_name = user_name
         self.db.insert_into_x_values_y("user", f'("{user_name}"), ("{user_address}")')
     
-    def init_contracts_from_database(self):
-        contracts = self.db.select_x_from_y_where_z("*", "contract")
-        for contract in contracts:
-            new_contract = ActiveContract(self.web3, contract[1], contract[0])
-            self.contracts[contract[1]] = new_contract
-            self.contract_message_logs[contract[1]] = []
-            self.contract_pub_key_logs[contract[1]] = []
-            self.contract_key_cipher_logs[contract[1]] = []
-            self.contract_message_archives[contract[1]] = []
-            print("added " + contract[1] + ": " + contract[0])
-        return contracts
-
-    def populate_contract_keys_from_database(self):
-        self.contract_list_authenticated = self.db.select_x_from_y_where_z("contract_name, user_key_cipher", "membership", f'user_name = ("{self.user_name}")')
-        try:
-            for contract in self.contract_list_authenticated:
-                contract_key_cipher = contract[1]
-                self.contract_keys[contract[0]] = self.keyring.decrypt_contract_key(contract_key_cipher)
-        except:
-            print("...")
+    def set_contract_key(self, contract_name: str, contract_key: bytes):
+        self.contract_keyring.import_contract_key(contract_name, contract_key)
+    
+    def init_authorized_contracts(self):
+        self.authenticated_contracts = []
+        for contract in os.listdir(self.keyring.keyring_path + f'/contract/*.key'):
+            contract_name = contract.split(".")[0]
+            self.authenticated_contracts.append(contract_name)
         
     def populate_message_archives_from_database(self):
         for contract in self.contract_membership_authenticated:
@@ -102,12 +78,6 @@ class UserMod:
             for message in self.db.select_x_from_y_where_z("contents", "message", f'contract_name = ("{contract}")'):
                 message_archive.append(message)
             self.contract_message_archives[contract] = message_archive
-
-    
-    def init_authentication_loop(self):
-        # Initialize authentication loop for unauthenticated contracts
-        authentication_thread = Thread(target=self.authentication_loop)
-        authentication_thread.start()
     
     def get_membership_archive(self, contract_name):
         membership_archive = self.db.select_x_from_y_where_z("user_name, user_pub_key, user_key_cipher", "membership", f'contract_name = ("{ contract_name }")')
@@ -117,11 +87,11 @@ class UserMod:
         seconds = time.time()
         current_time = time.ctime(seconds)
         msg = f'{ current_time }--{ self.user_name }@{ contract_name }: { msg_plaintext }'
-        msg_ciphertext = encrypt_message(msg, self.contract_keys[contract_name])
-        return self.contracts[contract_name].add_message(msg_ciphertext)
+        msg_ciphertext = self.contract_keyring.encrypt_message(msg, contract_name)
+        self.contracts[contract_name].add_message(msg_ciphertext)
     
     def add_pub_key_to_contract(self, contract_name, pub_key):
-        return self.contracts[contract_name].add_pubkey(pub_key)
+        self.contracts[contract_name].add_pubkey(pub_key)
     
     def add_key_cipher_to_contract(self, contract_name, key_cipher):
         self.contracts[contract_name].add_keycipher(key_cipher)
@@ -134,7 +104,7 @@ class UserMod:
             new_message_ciphers = self.contracts[contract_name].get_all_new_messages(0)
         while len(new_message_ciphers) >  0:
             new_message_cipher = new_message_ciphers.pop(0)
-            new_message = decrypt_message(new_message_cipher.encode(), self.contract_keys[contract_name])
+            new_message = self.contract_keyring.decrypt_message(new_message_cipher.encode(), contract_name)
             self.contract_message_logs[contract_name].append(new_message)
 
     def update_pub_keys_from_contract(self, contract_name):
